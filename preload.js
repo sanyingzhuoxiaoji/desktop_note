@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // 并整体拒绝执行。
 contextBridge.exposeInMainWorld('stickyApi', {
   loadData: () => ipcRenderer.invoke('data:load'),
+  viewImage: (payload) => ipcRenderer.send('img:view', payload),
   saveData: (data) => ipcRenderer.invoke('data:save', data),
   flushData: (data) => ipcRenderer.sendSync('data:save-sync', data),
   closeWindow: () => ipcRenderer.send('win:close'),

@@ -5,6 +5,7 @@ let state = {
   version: 1,
   title: '待办',
   themeColor: '#FFF9B1', // 皮肤底色，配套文字/点缀色由 HSL 推导
+  bgImage: null,         // 背景图 dataURL（null = 纯色模式）
   collapsed: true,
   items: [] // {id, text, images[], status, createdAt, finishedAt, droppedAt, note}
 };
@@ -27,8 +28,6 @@ const doneCount = $('#done-count');
 const labelDone = $('#label-done');
 const labelDropped = $('#label-dropped');
 const emptyArchive = $('#empty-archive');
-const imgOverlay = $('#img-overlay');
-const imgOverlayImg = $('#img-overlay-img');
 const noteBody = $('#note-body');
 const grip = $('#resize-grip');
 const pinBtn = $('#pin-btn');
@@ -169,7 +168,7 @@ function renderItem(item) {
       const im = document.createElement('img');
       im.src = src;
       im.draggable = false;
-      im.addEventListener('click', () => openOverlay(src));
+      im.addEventListener('click', () => api.viewImage({ src, w: im.naturalWidth || 800, h: im.naturalHeight || 600 }));
       imgs.appendChild(im);
     }
     main.appendChild(imgs);
@@ -296,9 +295,10 @@ composer.addEventListener('keydown', (e) => {
 });
 
 // ---------- 图片：降采样后以 dataURL 存入数据文件 ----------
-const MAX_SIDE = 480;
+const MAX_SIDE = 480;    // 待办缩略图降采样上限
+const BG_MAX_SIDE = 1920; // 背景图降采样上限
 
-function processImage(file) {
+function processImage(file, maxSide = MAX_SIDE) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -306,7 +306,7 @@ function processImage(file) {
       const img = new Image();
       img.onload = () => {
         try {
-          const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+          const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
           if (scale >= 1 && raw.length < 300 * 1024) return resolve(raw);
           const canvas = document.createElement('canvas');
           canvas.width = Math.max(1, Math.round(img.width * scale));
@@ -351,11 +351,7 @@ function onItemPaste(e, id) {
   })();
 }
 
-// 图片放大预览
-function openOverlay(src) {
-  imgOverlayImg.src = src;
-  imgOverlay.hidden = false;
-}
+// 图片放大预览改为独立查看窗口（main.js 的 img:view IPC）
 
 // ---------- 图片粘贴 / 拖拽 ----------
 composer.addEventListener('paste', (e) => {
@@ -485,6 +481,52 @@ function buildSkinPop() {
   });
   picker.addEventListener('change', () => scheduleSave());
   skinPop.appendChild(custom);
+
+  // 底部操作行：上传图片背景 / 清除背景
+  const foot = document.createElement('div');
+  foot.className = 'skin-foot';
+  const bgBtn = document.createElement('button');
+  bgBtn.className = 'skin-action';
+  bgBtn.textContent = '🖼 图片背景';
+  const bgInput = document.createElement('input');
+  bgInput.type = 'file';
+  bgInput.accept = 'image/*';
+  bgBtn.title = '上传图片作为便签背景';
+  bgBtn.addEventListener('click', () => bgInput.click());
+  bgInput.addEventListener('change', async () => {
+    const f = bgInput.files && bgInput.files[0];
+    if (!f) return;
+    const dataUrl = await processImage(f, BG_MAX_SIDE);
+    if (dataUrl) {
+      state.bgImage = dataUrl;
+      applyBackground();
+      scheduleSave();
+    }
+    bgInput.value = '';
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'skin-action clear-bg';
+  clearBtn.textContent = '清除背景';
+  clearBtn.addEventListener('click', () => {
+    state.bgImage = null;
+    applyBackground();
+    scheduleSave();
+  });
+  foot.appendChild(bgBtn);
+  foot.appendChild(clearBtn);
+  skinPop.appendChild(foot);
+}
+
+// ---------- 背景图：写入既有 CSS 变量（--note-bg-image 等均为预留扩展点） ----------
+function applyBackground() {
+  if (state.bgImage) {
+    body.style.setProperty('--note-bg-image', `url("${state.bgImage}")`);
+    body.style.setProperty('--note-bg-size', 'cover');
+    body.style.setProperty('--note-bg-repeat', 'no-repeat');
+  } else {
+    body.style.setProperty('--note-bg-image', 'none');
+  }
+  skinPop.classList.toggle('has-bg', !!state.bgImage);
 }
 
 skinBtn.addEventListener('click', () => {
@@ -572,15 +614,9 @@ window.addEventListener('blur', () => api.dockLeave()); // 切去别的应用即
 // 收起时头部临时取消拖拽区（drag 区域不产生鼠标事件，会导致边条上半段无法响应悬停）
 api.onDockState(({ hidden }) => body.classList.toggle('docked-hidden', !!hidden));
 
-// ---------- 图片预览层关闭 ----------
-imgOverlay.addEventListener('click', () => {
-  imgOverlay.hidden = true;
-  imgOverlayImg.src = '';
-});
+// ---------- Esc 关闭皮肤色板 ----------
 window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (!imgOverlay.hidden) imgOverlay.hidden = true;
-  if (!skinPop.hidden) skinPop.hidden = true;
+  if (e.key === 'Escape' && !skinPop.hidden) skinPop.hidden = true;
 });
 
 // ---------- 初始化 ----------
@@ -597,6 +633,7 @@ async function init() {
   titleLabel.textContent = state.title;
   buildSkinPop();
   applySkin(state.themeColor);
+  applyBackground();
   applyCollapse();
   renderAll();
 }

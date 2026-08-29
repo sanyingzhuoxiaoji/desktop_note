@@ -113,6 +113,7 @@ ipcMain.on('win:set-always-on-top', (_e, flag) => {
   // 在任务栏被第三方软件干扰的系统上会把窗口挤出置顶层。
   win.setAlwaysOnTop(!!flag, 'screen-saver');
   win.moveTop(); // 取消置顶后回到普通层顶部，避免沉底
+  if (viewerWin && !viewerWin.isDestroyed()) viewerWin.setAlwaysOnTop(!!flag, 'screen-saver');
 });
 
 // 右下角拖拽缩放：主进程用屏幕绝对坐标计算，避免窗口移动导致的反馈抖动
@@ -216,6 +217,56 @@ ipcMain.on('win:dock-leave', () => {
   dock.hidden = true;
   sendDockState();
   slideDockTo(dockX(dock.side, false, b.width, wa));
+});
+
+// ---------- 图片查看窗口（独立窗口、居中、可缩放） ----------
+let viewerWin = null;
+
+ipcMain.on('img:view', (_e, payload) => {
+  const { src, w = 800, h = 600 } = payload || {};
+  if (viewerWin && !viewerWin.isDestroyed()) {
+    // 已打开：直接换图并前置
+    viewerWin.webContents.send('viewer:img', { src });
+    if (viewerWin.isMinimized()) viewerWin.restore();
+    viewerWin.focus();
+    return;
+  }
+
+  // 新开：尺寸按图片比例适配（不超过所在屏幕工作区的 80%），居中于便签所在屏幕
+  const b = win ? win.getBounds() : { x: 0, y: 0, width: 0, height: 0 };
+  const wa = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).workArea;
+  const maxW = Math.round(wa.width * 0.8);
+  const maxH = Math.round(wa.height * 0.8);
+  const scale = Math.min(1, maxW / w, maxH / h);
+  const width = Math.max(320, Math.round(w * scale));
+  const height = Math.max(240, Math.round(h * scale));
+
+  viewerWin = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(wa.x + (wa.width - width) / 2),
+    y: Math.round(wa.y + (wa.height - height) / 2),
+    minWidth: 320,
+    minHeight: 240,
+    title: '图片预览',
+    backgroundColor: '#202124',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'viewer-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false
+    }
+  });
+  viewerWin.loadFile('viewer.html');
+  viewerWin.on('closed', () => { viewerWin = null; });
+
+  // 便签置顶时查看器同步置顶（用 screen-saver 等级，原因同上）
+  if (win && win.isAlwaysOnTop()) viewerWin.setAlwaysOnTop(true, 'screen-saver');
+
+  viewerWin.webContents.on('did-finish-load', () => {
+    if (viewerWin && !viewerWin.isDestroyed()) viewerWin.webContents.send('viewer:img', { src });
+  });
 });
 
 // ---------- 生命周期 ----------
