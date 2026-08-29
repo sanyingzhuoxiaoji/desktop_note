@@ -106,6 +106,11 @@ function createWindow() {
       win.hide();
     }
   });
+  win.on('closed', () => {
+    // 窗口销毁（退出中）后所有挂起定时器立即失效，防止操作已销毁窗口
+    stopDockAnim();
+    clearTimeout(dockMoveTimer);
+  });
 
   // 贴边隐藏：拖动结束判定（'move' 连续触发防抖，'moved' 拖动即时结束）
   win.on('move', () => {
@@ -200,7 +205,7 @@ ipcMain.on('win:resize-start', () => {
   resizeCtx = { bounds: win.getBounds(), cursor: screen.getCursorScreenPoint() };
 });
 ipcMain.on('win:resize-move', () => {
-  if (!resizeCtx) return;
+  if (!resizeCtx || !win || win.isDestroyed()) return;
   const p = screen.getCursorScreenPoint();
   const width = Math.max(MIN_W, resizeCtx.bounds.width + p.x - resizeCtx.cursor.x);
   const height = Math.max(MIN_H, resizeCtx.bounds.height + p.y - resizeCtx.cursor.y);
@@ -215,7 +220,7 @@ let dock = { side: null, hidden: false, width: 0 }; // side: 'left' | 'right' | 
 let dockAnim = null;
 
 function sendDockState() {
-  if (win) win.webContents.send('win:dock-state', { side: dock.side, hidden: dock.hidden });
+  if (win && !win.isDestroyed()) win.webContents.send('win:dock-state', { side: dock.side, hidden: dock.hidden });
 }
 
 // side 边贴边时窗口的 x 坐标：shown=true 展开（贴齐边缘），false 收起（只露边条）
@@ -238,6 +243,7 @@ function slideDockTo(targetX) {
   const steps = 12;
   dockAnim = setInterval(() => {
     i++;
+    if (!win || win.isDestroyed()) { stopDockAnim(); return; } // 退出中窗口已销毁，立即停止
     const t = Math.min(1, i / steps);
     const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
     win.setBounds({ x: Math.round(startX + (targetX - startX) * ease), y, width, height });
@@ -246,7 +252,7 @@ function slideDockTo(targetX) {
 }
 
 function handleMoveEnd() {
-  if (!win || dockAnim || win.isMinimized()) return;
+  if (!win || win.isDestroyed() || dockAnim || win.isMinimized()) return;
   const b = win.getBounds();
   const wa = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).workArea;
   const side = b.x <= wa.x + SNAP_PX ? 'left'
@@ -277,7 +283,7 @@ function handleMoveEnd() {
 let dockMoveTimer = null; // 拖动结束判定（在 createWindow 内注册监听，win 此时才存在）
 
 ipcMain.on('win:dock-hover', () => {
-  if (!win || !dock.side || !dock.hidden || win.isAlwaysOnTop()) return;
+  if (!win || win.isDestroyed() || !dock.side || !dock.hidden || win.isAlwaysOnTop()) return;
   const b = win.getBounds();
   const wa = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).workArea;
   dock.hidden = false;
@@ -285,7 +291,7 @@ ipcMain.on('win:dock-hover', () => {
   slideDockTo(dockX(dock.side, true, b.width, wa));
 });
 ipcMain.on('win:dock-leave', () => {
-  if (!win || !dock.side || dock.hidden || win.isAlwaysOnTop()) return;
+  if (!win || win.isDestroyed() || !dock.side || dock.hidden || win.isAlwaysOnTop()) return;
   const b = win.getBounds();
   // 指针仍在窗口内 = 拖拽区切换造成的"假离开"（drag 区域不产生鼠标事件，
   // 页面会误报 mouseleave），忽略之，否则会在展开/收起间无限横跳
@@ -361,7 +367,7 @@ function createTray() {
   ]));
   // 左键单击：显示/隐藏便签窗口
   tray.on('click', () => {
-    if (!win || isQuitting) return;
+    if (!win || win.isDestroyed() || isQuitting) return;
     if (win.isVisible() && !win.isMinimized()) {
       win.hide();
     } else {
