@@ -15,6 +15,8 @@ body {
   --note-text: #4a4520;
   --note-subtext: #8a8256;
   --accent: #c9971c;
+  --note-font-size: 13px;
+  --note-font-weight: 400;
   --hover-bg: rgba(0, 0, 0, 0.06);
   --border: rgba(0, 0, 0, 0.08);
 
@@ -156,7 +158,7 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.45);
   outline: none;
-  font-size: 13px; line-height: 1.5;
+  font-size: var(--note-font-size); font-weight: var(--note-font-weight); line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
@@ -184,7 +186,7 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
 
 .item-main { flex: 1; min-width: 0; }
 .item-text {
-  font-size: 13px; line-height: 1.55;
+  font-size: var(--note-font-size); font-weight: var(--note-font-weight); line-height: 1.55;
   white-space: pre-wrap; word-break: break-word;
   outline: none; cursor: text;
   user-select: text;

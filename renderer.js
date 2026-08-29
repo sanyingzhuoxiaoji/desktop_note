@@ -14,6 +14,7 @@ let state = {
 const $ = (sel) => document.querySelector(sel);
 const body = document.body;
 const skinBtn = $('#skin-btn');
+const setBtn = $('#set-btn');
 const skinPop = $('#skin-pop');
 const titleLabel = $('#note-title');
 const titleInput = $('#note-title-input');
@@ -607,6 +608,17 @@ pinBtn.addEventListener('click', () => {
 });
 
 $('#close-btn').addEventListener('click', () => api.closeWindow());
+
+setBtn.addEventListener('click', () => api.openSettings());
+
+// ---------- 字体设置（设置窗口修改后实时推送生效） ----------
+function applyFontSettings(s) {
+  if (!s) return;
+  body.style.setProperty('--note-font-size', s.fontSize + 'px');
+  body.style.setProperty('--note-font-weight', s.fontWeight);
+}
+api.getSettings().then(applyFontSettings);
+api.onSettingsChanged(applyFontSettings);
 
 // ---------- 右下角缩放 ----------
 let resizing = false;

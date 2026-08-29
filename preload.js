@@ -9,11 +9,15 @@ contextBridge.exposeInMainWorld('stickyApi', {
   saveData: (data) => ipcRenderer.invoke('data:save', data),
   flushData: (data) => ipcRenderer.sendSync('data:save-sync', data),
   closeWindow: () => ipcRenderer.send('win:close'),
+  openSettings: () => ipcRenderer.send('win:open-settings'),
   setAlwaysOnTop: (flag) => ipcRenderer.send('win:set-always-on-top', flag),
   resizeStart: () => ipcRenderer.send('win:resize-start'),
   resizeMove: () => ipcRenderer.send('win:resize-move'),
   resizeEnd: () => ipcRenderer.send('win:resize-end'),
   dockHover: () => ipcRenderer.send('win:dock-hover'),
   dockLeave: () => ipcRenderer.send('win:dock-leave'),
-  onDockState: (cb) => ipcRenderer.on('win:dock-state', (_e, state) => cb(state))
+  onDockState: (cb) => ipcRenderer.on('win:dock-state', (_e, state) => cb(state)),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  onSettingsChanged: (cb) => ipcRenderer.on('settings-changed', (_e, s) => cb(s))
 });

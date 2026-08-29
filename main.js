@@ -11,6 +11,18 @@ let win = null;
 // ---------- 数据文件 ----------
 const dataPath = () => path.join(app.getPath('userData'), 'sticky-note-data.json');
 const statePath = () => path.join(app.getPath('userData'), 'window-state.json');
+const settingsPath = () => path.join(app.getPath('userData'), 'app-settings.json');
+
+const DEFAULT_SETTINGS = { fontSize: 13, fontWeight: 400, autoStart: false };
+let appSettings = { ...DEFAULT_SETTINGS };
+
+function loadAppSettings() {
+  appSettings = { ...DEFAULT_SETTINGS, ...(readJSON(settingsPath()) || {}) };
+}
+
+function saveAppSettings() {
+  try { writeJSON(settingsPath(), appSettings); } catch (e) { console.error(e); }
+}
 
 function readJSON(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf-8')); } catch { return null; }
@@ -83,6 +95,7 @@ function createWindow() {
   // 调试时可取消注释：win.webContents.openDevTools({ mode: 'detach' });
 
   win.on('close', saveWindowState);
+  win.on('closed', () => app.quit()); // 主便签关闭即退出（含设置窗口仍开着的场景）
 
   // 贴边隐藏：拖动结束判定（'move' 连续触发防抖，'moved' 拖动即时结束）
   win.on('move', () => {
@@ -106,6 +119,61 @@ ipcMain.on('data:save-sync', (e, data) => {
 });
 
 ipcMain.on('win:close', () => win && win.close());
+
+// ---------- 设置窗口（左目录 + 右内容；单例） ----------
+let settingsWin = null;
+
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 560,
+    height: 420,
+    title: '设置',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false
+    }
+  });
+  settingsWin.loadFile('settings.html');
+  settingsWin.on('closed', () => { settingsWin = null; });
+}
+
+ipcMain.on('win:open-settings', () => openSettings());
+
+// 读写自启动项必须用同一组选项：getLoginItemSettings 会比对 args，
+// 写入带了 args 而读取用默认空参数时，会误报"未启用"
+function loginItemOpts() {
+  return { path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] };
+}
+function actualAutoStart() {
+  return app.getLoginItemSettings(loginItemOpts()).openAtLogin;
+}
+
+ipcMain.handle('settings:get', () => ({ ...appSettings, autoStart: actualAutoStart() }));
+
+ipcMain.handle('settings:set', (_e, patch) => {
+  if (patch && typeof patch === 'object') {
+    if (Number.isFinite(patch.fontSize)) appSettings.fontSize = Math.min(20, Math.max(11, Math.round(patch.fontSize)));
+    if (Number.isFinite(patch.fontWeight)) appSettings.fontWeight = Math.min(700, Math.max(300, Math.round(patch.fontWeight)));
+    if (typeof patch.autoStart === 'boolean') {
+      appSettings.autoStart = patch.autoStart;
+      app.setLoginItemSettings({
+        openAtLogin: patch.autoStart,
+        ...loginItemOpts() // 开发模式下注册带应用路径，登录时能直接打开本应用
+      });
+    }
+    saveAppSettings();
+  }
+  // 字体等外观设置即时生效：推送给便签窗口
+  if (win && !win.isDestroyed()) win.webContents.send('settings-changed', { ...appSettings });
+  return { ...appSettings, autoStart: actualAutoStart() };
+});
 ipcMain.on('win:set-always-on-top', (_e, flag) => {
   if (!win) return;
   // 必须用 screen-saver 等级：默认 floating 等级会触发 Electron 的
@@ -270,6 +338,9 @@ ipcMain.on('img:view', (_e, payload) => {
 });
 
 // ---------- 生命周期 ----------
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  loadAppSettings();
+  createWindow();
+});
 
 app.on('window-all-closed', () => app.quit());
