@@ -105,8 +105,7 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
   white-space: nowrap;
 }
 .skin-action:hover { background: rgba(0, 0, 0, 0.12); }
-.skin-action.clear-bg { display: none; }
-.skin-pop.has-bg .skin-action.clear-bg { display: block; }
+/* "清除背景"常显：无背景图时点击无副作用（仅清空状态） */
 
 /* ===== 标题：纯文本展示整条可拖；✎ 进入编辑态后由输入框接管 ===== */
 #note-title {

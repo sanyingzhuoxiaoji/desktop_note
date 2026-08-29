@@ -94,8 +94,7 @@ function createWindow() {
   });
 
   Menu.setApplicationMenu(null); // 无菜单栏
-  // 启动默认置顶，须用 screen-saver 等级（原因见 win:set-always-on-top 处注释）
-  win.setAlwaysOnTop(true, 'screen-saver');
+  // 启动默认不置顶；📌 按钮可在运行时切换（screen-saver 等级，原因见 win:set-always-on-top 处注释）
   win.loadFile('index.html');
   // 调试时可取消注释：win.webContents.openDevTools({ mode: 'detach' });
 
