@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, Tray } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -10,6 +10,7 @@ const MIN_H = 220;
 const DEFAULT_BOUNDS = { width: 360, height: 460 };
 
 let win = null;
+let isQuitting = false; // 区分"隐藏到托盘"与"真正退出"
 
 // ---------- 数据文件 ----------
 const dataPath = () => path.join(app.getPath('userData'), 'sticky-note-data.json');
@@ -82,6 +83,7 @@ function createWindow() {
     resizable: true,
     maximizable: false,
     fullscreenable: false,
+    skipTaskbar: true, // 不占任务栏，常驻系统托盘
     backgroundColor: (readJSON(dataPath()) || {}).themeColor || '#FFF9B1',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -97,8 +99,14 @@ function createWindow() {
   win.loadFile('index.html');
   // 调试时可取消注释：win.webContents.openDevTools({ mode: 'detach' });
 
-  win.on('close', saveWindowState);
-  win.on('closed', () => app.quit()); // 主便签关闭即退出（含设置窗口仍开着的场景）
+  win.on('close', (e) => {
+    saveWindowState();
+    if (!isQuitting) {
+      // 点 ✕ / Alt+F4：仅隐藏到托盘，不退出；退出只能走托盘菜单"退出应用"
+      e.preventDefault();
+      win.hide();
+    }
+  });
 
   // 贴边隐藏：拖动结束判定（'move' 连续触发防抖，'moved' 拖动即时结束）
   win.on('move', () => {
@@ -340,10 +348,49 @@ ipcMain.on('img:view', (_e, payload) => {
   });
 });
 
-// ---------- 生命周期 ----------
-app.whenReady().then(() => {
-  loadAppSettings();
-  createWindow();
-});
+// ---------- 系统托盘 ----------
+let tray = null;
 
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'build', 'icon.ico'));
+  tray.setToolTip('桌面便签');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: '退出应用',
+      click: () => { isQuitting = true; app.quit(); }
+    }
+  ]));
+  // 左键单击：显示/隐藏便签窗口
+  tray.on('click', () => {
+    if (!win || isQuitting) return;
+    if (win.isVisible() && !win.isMinimized()) {
+      win.hide();
+    } else {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+}
+
+// ---------- 生命周期 ----------
+// 单实例锁：托盘应用开两个会出现双托盘图标与数据写入竞态
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!win || isQuitting) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+
+  app.whenReady().then(() => {
+    loadAppSettings();
+    createWindow();
+    createTray();
+  });
+}
+
+app.on('before-quit', () => { isQuitting = true; });
 app.on('window-all-closed', () => app.quit());

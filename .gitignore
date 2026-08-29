@@ -26,3 +26,4 @@ release/
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+build/icon.ico

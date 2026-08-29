@@ -28,7 +28,8 @@
       "viewer.html",
       "viewer.css",
       "viewer.js",
-      "viewer-preload.js"
+      "viewer-preload.js",
+      "build/icon.ico"
     ],
     "win": {
       "icon": "build/icon.ico",
