@@ -2,6 +2,9 @@ const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// 钉死数据目录：开发与打包后共用同一份便签数据（否则打包后应用名变化会换目录，数据"消失"）
+app.setPath('userData', path.join(app.getPath('appData'), 'desktop-sticky-note'));
+
 const MIN_W = 280;
 const MIN_H = 220;
 const DEFAULT_BOUNDS = { width: 360, height: 460 };

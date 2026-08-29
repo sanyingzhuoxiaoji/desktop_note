@@ -1,0 +1,7 @@
+把你的图标放到本目录并命名为 icon.ico（打包 exe / 安装器 / 桌面快捷方式的图标）。
+
+要求：
+- 推荐 .ico 格式，至少包含 256×256 尺寸
+- 如果只有 PNG：用一张 256×256 以上、 preferably 正方形的 PNG 命名为 icon.png 放在本目录，
+  并把 package.json 里 win.icon 改为 "build/icon.png"（electron-builder 会自动转换）
+- 换图标后重新执行 npm run dist 即可生效

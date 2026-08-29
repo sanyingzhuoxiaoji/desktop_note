@@ -1,13 +1,55 @@
 {
   "name": "desktop-sticky-note",
+  "productName": "桌面便签",
   "version": "1.0.0",
   "description": "极简桌面便签 - Electron 无边框贴纸应用",
+  "author": "sanyingzhuoxiaoji",
   "main": "main.js",
   "license": "MIT",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.sanyingzhuoxiaoji.desktop-note",
+    "productName": "桌面便签",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "style.css",
+      "renderer.js",
+      "settings.html",
+      "settings.css",
+      "settings.js",
+      "viewer.html",
+      "viewer.css",
+      "viewer.js",
+      "viewer-preload.js"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "桌面便签"
+    }
   },
   "devDependencies": {
-    "electron": "^43.4.1"
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
   }
 }
