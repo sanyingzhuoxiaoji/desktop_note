@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 打包/构建输出（将来用 electron-builder 等打包时会用到）
+dist/
+out/
+release/
+
+# 运行时缓存
+.npm/
+.cache/
+
+# 编辑器 / 本地个人配置
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# 操作系统
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

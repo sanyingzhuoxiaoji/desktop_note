@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>便签</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-yellow">
+  <!-- 头部：窗口拖拽区（标题为纯文本整条可拖；重命名经 ✎ 按钮进入编辑态） -->
+  <header id="app-header">
+    <button id="skin-btn" class="hdr-btn" title="皮肤">👕</button>
+    <div id="note-title"></div>
+    <input id="note-title-input" spellcheck="false" autocomplete="off" placeholder="便签名称" hidden>
+    <div id="header-actions">
+      <button id="rename-btn" class="hdr-btn" title="重命名">✎</button>
+      <button id="pin-btn" class="hdr-btn active" title="窗口置顶（点击取消）">📌</button>
+      <button id="close-btn" class="hdr-btn" title="关闭">✕</button>
+    </div>
+  </header>
+  <!-- 皮肤色板浮层（色格由 renderer.js 动态生成） -->
+  <div id="skin-pop" hidden></div>
+
+  <main id="note-body">
+    <!-- 新增输入框 -->
+    <div id="composer-wrap">
+      <div id="composer" contenteditable="plaintext-only"
+           data-placeholder="单击输入，Enter新增一条，Ctrl+Enter换行"></div>
+    </div>
+
+    <!-- 待完成 -->
+    <div class="group-label" id="label-todo">待完成</div>
+    <!-- 未完成列表 -->
+    <div id="todo-list"></div>
+
+    <!-- 已完成 / 已放弃 折叠区 -->
+    <section id="done-section">
+      <button id="done-toggle">
+        <span id="done-arrow">▸</span>
+        <span>已完成</span>
+        <span id="done-count" class="count-badge">0</span>
+      </button>
+      <div id="done-body">
+        <div class="group-label" id="label-done">已完成</div>
+        <div id="done-list" class="group-list"></div>
+        <div class="group-label" id="label-dropped">已放弃</div>
+        <div id="dropped-list" class="group-list"></div>
+        <div id="empty-archive" class="empty-tip" hidden>这里还什么都没有</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 右下角缩放把手 -->
+  <div id="resize-grip" title="拖拽缩放"></div>
+
+  <!-- 图片预览层 -->
+  <div id="img-overlay" hidden>
+    <img id="img-overlay-img" alt="图片预览">
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

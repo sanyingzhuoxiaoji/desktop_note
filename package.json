@@ -1,0 +1,13 @@
+{
+  "name": "desktop-sticky-note",
+  "version": "1.0.0",
+  "description": "极简桌面便签 - Electron 无边框贴纸应用",
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^43.4.1"
+  }
+}
