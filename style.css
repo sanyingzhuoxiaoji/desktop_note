@@ -124,9 +124,8 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
 }
 #note-title-input:focus { background: var(--hover-bg); }
 
-#rename-btn { opacity: 0; transition: opacity 0.12s; }
-#app-header:hover #rename-btn { opacity: 0.75; }
-#app-header:hover #rename-btn:hover { opacity: 1; background: var(--hover-bg); }
+#rename-btn { opacity: 0.75; }
+#rename-btn:hover { opacity: 1; background: var(--hover-bg); }
 
 #header-actions { display: flex; gap: 2px; }
 .hdr-btn {
