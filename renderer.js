@@ -160,17 +160,38 @@ function renderItem(item) {
   textEl.addEventListener('paste', (e) => onItemPaste(e, item.id));
   main.appendChild(textEl);
 
-  // 图片缩略图
+  // 图片缩略图（悬停出现 ✕ 可删除单张）
   if (item.images.length) {
     const imgs = document.createElement('div');
     imgs.className = 'item-images';
-    for (const src of item.images) {
+    item.images.forEach((src, idx) => {
+      const wrap = document.createElement('span');
+      wrap.className = 'img-wrap';
       const im = document.createElement('img');
       im.src = src;
       im.draggable = false;
+      im.title = '点击放大';
       im.addEventListener('click', () => api.viewImage({ src, w: im.naturalWidth || 800, h: im.naturalHeight || 600 }));
-      imgs.appendChild(im);
-    }
+      const del = document.createElement('button');
+      del.className = 'img-del';
+      del.title = '删除这张图片';
+      del.textContent = '✕';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const it = findItem(item.id);
+        if (!it) return;
+        it.images.splice(idx, 1);
+        // 纯图片条目删掉最后一张图后整条移除，避免留下空行
+        if (!it.text && it.images.length === 0) {
+          state.items = state.items.filter((x) => x.id !== it.id);
+        }
+        renderAll();
+        scheduleSave();
+      });
+      wrap.appendChild(im);
+      wrap.appendChild(del);
+      imgs.appendChild(wrap);
+    });
     main.appendChild(imgs);
   }
 

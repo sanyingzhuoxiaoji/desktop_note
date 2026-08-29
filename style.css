@@ -221,13 +221,31 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
   display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 5px;
 }
+.img-wrap {
+  position: relative;
+  max-width: 46%;
+}
 .item-images img {
-  max-width: 46%; max-height: 96px;
+  display: block;
+  max-width: 100%; max-height: 96px;
   object-fit: contain;
   border-radius: 6px; border: 1px solid var(--border);
   background: #fff;
   cursor: zoom-in;
 }
+.img-del {
+  position: absolute; top: 3px; right: 3px;
+  width: 16px; height: 16px;
+  padding: 0;
+  border: none; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  font: 10px/16px var(--font);
+  text-align: center;
+  cursor: pointer;
+  opacity: 0; transition: opacity 0.12s;
+}
+.img-wrap:hover .img-del { opacity: 1; }
+.img-del:hover { background: rgba(198, 40, 40, 0.9); }
 
 .item-actions {
   flex: 0 0 auto;
