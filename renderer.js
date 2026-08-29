@@ -316,10 +316,19 @@ composer.addEventListener('keydown', (e) => {
 });
 
 // ---------- 图片：降采样后以 dataURL 存入数据文件 ----------
-const MAX_SIDE = 480;    // 待办缩略图降采样上限
 const BG_MAX_SIDE = 1920; // 背景图降采样上限
 
-function processImage(file, maxSide = MAX_SIDE) {
+// 待办图片：直接读原图 dataURL，不缩放、不重编码（保持原图清晰度）
+function readAsDataURL(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result) || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
+function processImage(file, maxSide = BG_MAX_SIDE) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -366,7 +375,7 @@ function onItemPaste(e, id) {
   (async () => {
     const it = findItem(id);
     if (!it) return;
-    for (const f of files) it.images.push(await processImage(f));
+    for (const f of files) it.images.push(await readAsDataURL(f));
     renderAll();
     scheduleSave();
   })();
@@ -382,7 +391,7 @@ composer.addEventListener('paste', (e) => {
   (async () => {
     let last = null;
     for (const f of files) {
-      const dataUrl = await processImage(f);
+      const dataUrl = await readAsDataURL(f);
       last = createItem('', state.items.length, [dataUrl]);
     }
     renderAll();
@@ -408,10 +417,10 @@ noteBody.addEventListener('drop', (e) => {
     const itemEl = e.target.closest('.item');
     if (itemEl && findItem(itemEl.dataset.id)) {
       const it = findItem(itemEl.dataset.id);
-      for (const f of files) it.images.push(await processImage(f));
+      for (const f of files) it.images.push(await readAsDataURL(f));
     } else {
       for (const f of files) {
-        createItem('', state.items.length, [await processImage(f)]);
+        createItem('', state.items.length, [await readAsDataURL(f)]);
       }
     }
     renderAll();
