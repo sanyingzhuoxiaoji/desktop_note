@@ -424,9 +424,9 @@ function openReminderPopup(payload) {
   const H = payload.src ? 300 : 130;
   const wa = screen.getPrimaryDisplay().workArea;
   if (reminderWin && !reminderWin.isDestroyed()) {
-    // 已开着：换内容并挪到最新位置
-    positionReminderWin(W, H, wa);
+    // 已开着：换内容并居中
     reminderWin.setSize(W, H);
+    reminderWin.setPosition(Math.round(wa.x + (wa.width - W) / 2), Math.round(wa.y + (wa.height - H) / 2));
     reminderWin.webContents.send('alert:data', payload);
     reminderWin.showInactive();
     return;
@@ -434,8 +434,8 @@ function openReminderPopup(payload) {
   reminderWin = new BrowserWindow({
     width: W,
     height: H,
-    x: wa.x + wa.width - W - 16,
-    y: wa.y + wa.height - H - 16,
+    x: Math.round(wa.x + (wa.width - W) / 2),
+    y: Math.round(wa.y + (wa.height - H) / 2),
     frame: false,
     resizable: false,
     movable: false,
@@ -459,11 +459,6 @@ function openReminderPopup(payload) {
       reminderWin.showInactive();
     }
   });
-}
-
-function positionReminderWin(w, h, wa) {
-  if (!reminderWin || reminderWin.isDestroyed()) return;
-  reminderWin.setPosition(wa.x + wa.width - w - 16, wa.y + wa.height - h - 16);
 }
 
 ipcMain.on('alert:action', (_e, { action }) => {
