@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>待办提醒</title>
+  <link rel="stylesheet" href="alert.css">
+</head>
+<body>
+  <div id="card">
+    <div id="head">🔔 待办提醒</div>
+    <img id="pic" alt="" hidden>
+    <div id="text"></div>
+    <div id="btns">
+      <button id="open-btn">打开便签</button>
+      <button id="ok-btn">知道了</button>
+    </div>
+  </div>
+  <script src="alert.js"></script>
+</body>
+</html>

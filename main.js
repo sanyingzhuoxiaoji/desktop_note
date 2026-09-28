@@ -19,7 +19,7 @@ const dataPath = () => path.join(app.getPath('userData'), 'sticky-note-data.json
 const statePath = () => path.join(app.getPath('userData'), 'window-state.json');
 const settingsPath = () => path.join(app.getPath('userData'), 'app-settings.json');
 
-const DEFAULT_SETTINGS = { fontSize: 13, fontWeight: 400, autoStart: false };
+const DEFAULT_SETTINGS = { fontSize: 13, fontWeight: 400, autoStart: false, reminderImage: null };
 let appSettings = { ...DEFAULT_SETTINGS };
 
 function loadAppSettings() {
@@ -178,6 +178,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if (patch && typeof patch === 'object') {
     if (Number.isFinite(patch.fontSize)) appSettings.fontSize = Math.min(20, Math.max(11, Math.round(patch.fontSize)));
     if (Number.isFinite(patch.fontWeight)) appSettings.fontWeight = Math.min(700, Math.max(300, Math.round(patch.fontWeight)));
+    if (typeof patch.reminderImage === 'string' || patch.reminderImage === null) appSettings.reminderImage = patch.reminderImage;
     if (typeof patch.autoStart === 'boolean') {
       appSettings.autoStart = patch.autoStart;
       app.setLoginItemSettings({
@@ -397,6 +398,7 @@ function fireReminder(id) {
   const n = new Notification({
     title: '待办提醒',
     body: (firstLine || '（图片待办）').slice(0, 40) + '（便签）',
+    icon: path.join(__dirname, 'build', 'icon.ico'),
     silent: false
   });
   n.on('click', () => {
@@ -407,9 +409,71 @@ function fireReminder(id) {
     }
   });
   n.show();
+  // 自定义图片弹窗：条目图优先，全局兜底图次之，都无则无图
+  const src = (Array.isArray(it.images) && it.images[0]) || appSettings.reminderImage || null;
+  openReminderPopup({ src, text: firstLine, id });
   // 同步渲染端内存状态，防止其后续防抖保存把 reminded 覆盖回 false
   win.webContents.send('reminder:fired', { id });
 }
+
+// ---------- 提醒图片弹窗（右下角、置顶、不抢焦点；单例） ----------
+let reminderWin = null;
+
+function openReminderPopup(payload) {
+  const W = 320;
+  const H = payload.src ? 300 : 130;
+  const wa = screen.getPrimaryDisplay().workArea;
+  if (reminderWin && !reminderWin.isDestroyed()) {
+    // 已开着：换内容并挪到最新位置
+    positionReminderWin(W, H, wa);
+    reminderWin.setSize(W, H);
+    reminderWin.webContents.send('alert:data', payload);
+    reminderWin.showInactive();
+    return;
+  }
+  reminderWin = new BrowserWindow({
+    width: W,
+    height: H,
+    x: wa.x + wa.width - W - 16,
+    y: wa.y + wa.height - H - 16,
+    frame: false,
+    resizable: false,
+    movable: false,
+    focusable: false,   // 不抢焦点：用户打字不被打断
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: '#26241e',
+    webPreferences: {
+      preload: path.join(__dirname, 'alert-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false
+    }
+  });
+  reminderWin.setAlwaysOnTop(true, 'screen-saver');
+  reminderWin.loadFile('alert.html');
+  reminderWin.on('closed', () => { reminderWin = null; });
+  reminderWin.webContents.on('did-finish-load', () => {
+    if (reminderWin && !reminderWin.isDestroyed()) {
+      reminderWin.webContents.send('alert:data', payload);
+      reminderWin.showInactive();
+    }
+  });
+}
+
+function positionReminderWin(w, h, wa) {
+  if (!reminderWin || reminderWin.isDestroyed()) return;
+  reminderWin.setPosition(wa.x + wa.width - w - 16, wa.y + wa.height - h - 16);
+}
+
+ipcMain.on('alert:action', (_e, { action }) => {
+  if (reminderWin && !reminderWin.isDestroyed()) reminderWin.close();
+  if (action === 'open' && win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+});
 
 function scheduleReminder(id, remindAt) {
   const old = remindTimers.get(id);

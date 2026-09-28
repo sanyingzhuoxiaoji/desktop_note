@@ -121,3 +121,25 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .switch input:checked + .switch-ui { background: #3f9e63; }
 .switch input:checked + .switch-ui::after { left: 22px; }
+
+/* 提醒图片设置 */
+.btn-row { display: flex; gap: 8px; margin-top: 10px; }
+.settings-btn {
+  border: none;
+  border-radius: 7px;
+  background: #c9971c;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.settings-btn:hover { filter: brightness(1.08); }
+.settings-btn.ghost { background: #e3e0d8; color: #555; }
+.remind-preview {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e0ddd5;
+  flex: 0 0 auto;
+}

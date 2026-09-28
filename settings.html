@@ -10,6 +10,7 @@
 <body>
   <aside id="nav">
     <div class="nav-item active" data-panel="font">字体</div>
+    <div class="nav-item" data-panel="remind">提醒</div>
     <div class="nav-item" data-panel="boot">开机自启</div>
   </aside>
 
@@ -31,6 +32,21 @@
         <input id="font-weight" type="range" min="300" max="700" step="50">
       </div>
       <div id="preview">预览：完成项目报告 ABC abc 123</div>
+    </section>
+
+    <!-- 提醒 -->
+    <section id="panel-remind" class="panel">
+      <div class="row row-line" style="align-items:flex-start">
+        <div class="row-text">
+          <div class="row-label">提醒图片</div>
+          <div class="desc">到点提醒时在右下角弹窗展示。待办自带的图片优先；没有图时用这里设置的全局图</div>
+          <div class="btn-row">
+            <button id="remind-img-btn" class="settings-btn">🖼 上传提醒图片</button>
+            <button id="remind-img-clear" class="settings-btn ghost">清除</button>
+          </div>
+        </div>
+        <img id="remind-img-preview" class="remind-preview" alt="" hidden>
+      </div>
     </section>
 
     <!-- 开机自启 -->

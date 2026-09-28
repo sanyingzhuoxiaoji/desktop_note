@@ -29,6 +29,10 @@
       "viewer.css",
       "viewer.js",
       "viewer-preload.js",
+      "alert.html",
+      "alert.css",
+      "alert.js",
+      "alert-preload.js",
       "build/icon.ico"
     ],
     "win": {

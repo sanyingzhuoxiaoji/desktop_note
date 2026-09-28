@@ -1,0 +1,59 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: transparent;
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+#card {
+  background: rgba(38, 36, 30, 0.96);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #f5f2e8;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#head {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd76a;
+  margin-bottom: 8px;
+}
+
+#pic {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: #222;
+}
+#pic[hidden] { display: none; }
+
+#text {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+#btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+#btns button {
+  border: none;
+  border-radius: 7px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+#open-btn { background: #c9971c; color: #fff; }
+#open-btn:hover { filter: brightness(1.1); }
+#ok-btn { background: rgba(255, 255, 255, 0.14); color: #ddd; }
+#ok-btn:hover { background: rgba(255, 255, 255, 0.22); }
