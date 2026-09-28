@@ -1,9 +1,11 @@
-const { app, BrowserWindow, Menu, ipcMain, screen, Tray } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, Tray, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 // 钉死数据目录：开发与打包后共用同一份便签数据（否则打包后应用名变化会换目录，数据"消失"）
 app.setPath('userData', path.join(app.getPath('appData'), 'desktop-sticky-note'));
+// Windows toast 通知必需：与 package.json 的 appId 保持一致
+app.setAppUserModelId('com.sanyingzhuoxiaoji.desktop-note');
 
 const MIN_W = 280;
 const MIN_H = 220;
@@ -378,8 +380,66 @@ function createTray() {
   });
 }
 
+// ---------- 待办提醒（主进程调度：窗口隐藏到托盘时渲染端 timer 会被节流，主进程不受影响） ----------
+const remindTimers = new Map(); // item.id → setTimeout 句柄
+
+function fireReminder(id) {
+  remindTimers.delete(id);
+  if (!win || win.isDestroyed()) return;
+  const data = readJSON(dataPath());
+  const it = data && Array.isArray(data.items) ? data.items.find((x) => x.id === id) : null;
+  // 二次校验（数据文件为权威）：可能已被删除/完成/重复触发
+  if (!it || it.status !== 'todo' || it.reminded) return;
+  it.reminded = true;
+  try { writeJSON(dataPath(), data); } catch { /* 写失败不阻断通知 */ }
+
+  const firstLine = String(it.text || '').split('\n')[0].trim();
+  const n = new Notification({
+    title: '待办提醒',
+    body: (firstLine || '（图片待办）').slice(0, 40) + '（便签）',
+    silent: false
+  });
+  n.on('click', () => {
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+  n.show();
+  // 同步渲染端内存状态，防止其后续防抖保存把 reminded 覆盖回 false
+  win.webContents.send('reminder:fired', { id });
+}
+
+function scheduleReminder(id, remindAt) {
+  const old = remindTimers.get(id);
+  if (old) clearTimeout(old);
+  remindTimers.delete(id);
+  if (!remindAt) return; // null = 清除提醒
+  const delay = new Date(remindAt).getTime() - Date.now();
+  // 过期（含启动补发场景）走下一个 tick 立即触发
+  remindTimers.set(id, setTimeout(() => fireReminder(id), Math.max(0, delay)));
+}
+
+ipcMain.handle('reminder:set', (_e, { id, remindAt }) => {
+  if (!id) return { ok: false };
+  scheduleReminder(id, remindAt);
+  return { ok: true };
+});
+
+function scheduleAllReminders() {
+  const data = readJSON(dataPath());
+  if (!data || !Array.isArray(data.items)) return;
+  for (const it of data.items) {
+    if (it.status === 'todo' && it.remindAt && !it.reminded) {
+      scheduleReminder(it.id, it.remindAt); // 过期的 delay≤0 → 立即触发 = 启动补发
+    }
+  }
+}
+
 // ---------- 生命周期 ----------
 // 单实例锁：托盘应用开两个会出现双托盘图标与数据写入竞态
+// （开发版与安装版共用同一数据目录，因此也共用这把锁——一方运行时另一方无法启动）
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -394,6 +454,7 @@ if (!app.requestSingleInstanceLock()) {
     loadAppSettings();
     createWindow();
     createTray();
+    scheduleAllReminders(); // 启动扫描：未提醒的照常调度，已过期的立即补发
   });
 }
 

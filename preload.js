@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('stickyApi', {
   dockLeave: () => ipcRenderer.send('win:dock-leave'),
   onDockState: (cb) => ipcRenderer.on('win:dock-state', (_e, state) => cb(state)),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  setReminder: (id, remindAt) => ipcRenderer.invoke('reminder:set', { id, remindAt }),
+  onReminderFired: (cb) => ipcRenderer.on('reminder:fired', (_e, p) => cb(p)),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   onSettingsChanged: (cb) => ipcRenderer.on('settings-changed', (_e, s) => cb(s))
 });

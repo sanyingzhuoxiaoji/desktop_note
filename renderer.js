@@ -83,6 +83,19 @@ function createItem(text = '', index = state.items.length, images = []) {
   return item;
 }
 
+// ---------- 提醒 ----------
+function fmtLocalInput(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function clearReminder(it) {
+  if (!it.remindAt && !it.reminded) return;
+  it.remindAt = null;
+  it.reminded = false;
+  api.setReminder(it.id, null);
+}
+
 // ---------- 渲染 ----------
 function mkBtn(text, title, onClick) {
   const b = document.createElement('button');
@@ -110,6 +123,7 @@ function renderItem(item) {
     if (cb.checked) {
       it.status = 'done';
       it.finishedAt = new Date().toISOString();
+      clearReminder(it); // 已完成的待办不再提醒
     } else {
       it.status = 'todo';
       it.finishedAt = null;
@@ -225,18 +239,68 @@ function renderItem(item) {
     });
     main.appendChild(noteInput);
   }
+
+  // 提醒徽标（todo 项）
+  if (item.status === 'todo' && (item.remindAt || item.reminded)) {
+    const badge = document.createElement('div');
+    badge.className = 'reminder-badge' + (item.reminded ? ' fired' : '');
+    badge.textContent = item.reminded ? '🔔 已提醒' : `🔔 ${fmtFull(item.remindAt)}`;
+    main.appendChild(badge);
+  }
+
+  // 提醒设置面板（点击 🔔 切换）
+  if (item.status === 'todo') {
+    const panel = document.createElement('div');
+    panel.className = 'reminder-panel';
+    panel.hidden = true;
+    const timeInput = document.createElement('input');
+    timeInput.type = 'datetime-local';
+    timeInput.value = fmtLocalInput(item.remindAt || (Date.now() + 60 * 60 * 1000));
+    const okBtn = document.createElement('button');
+    okBtn.textContent = '确定';
+    okBtn.addEventListener('click', () => {
+      const it = findItem(item.id);
+      if (!it) return;
+      panel.hidden = true;
+      if (!timeInput.value) return;
+      it.remindAt = new Date(timeInput.value).toISOString();
+      it.reminded = false;
+      api.setReminder(it.id, it.remindAt);
+      renderAll();
+      scheduleSave();
+    });
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = '清除';
+    clearBtn.addEventListener('click', () => {
+      const it = findItem(item.id);
+      panel.hidden = true;
+      if (!it) return;
+      clearReminder(it);
+      renderAll();
+      scheduleSave();
+    });
+    panel.appendChild(timeInput);
+    panel.appendChild(okBtn);
+    panel.appendChild(clearBtn);
+    main.appendChild(panel);
+  }
   el.appendChild(main);
 
   // 悬停操作
   const actions = document.createElement('div');
   actions.className = 'item-actions';
   if (item.status === 'todo') {
+    actions.appendChild(mkBtn('🔔', item.remindAt ? '修改/清除提醒' : '设置提醒', () => {
+      const panel = el.querySelector('.reminder-panel');
+      if (panel) panel.hidden = !panel.hidden;
+    }));
     actions.appendChild(mkBtn('✕', '放弃', () => {
       const it = findItem(item.id);
       if (!it) return;
       it.status = 'dropped';
       it.droppedAt = new Date().toISOString();
       it.finishedAt = null;
+      clearReminder(it); // 放弃的待办不再提醒
       renderAll();
       scheduleSave();
     }));
@@ -655,6 +719,14 @@ document.addEventListener('mouseleave', () => {
 window.addEventListener('blur', () => api.dockLeave()); // 切去别的应用即收起
 // 收起时头部临时取消拖拽区（drag 区域不产生鼠标事件，会导致边条上半段无法响应悬停）
 api.onDockState(({ hidden }) => body.classList.toggle('docked-hidden', !!hidden));
+
+// 主进程已弹提醒：同步内存状态（reminded=true），防止后续保存覆盖主进程写入
+api.onReminderFired(({ id }) => {
+  const it = findItem(id);
+  if (!it) return;
+  it.reminded = true;
+  renderAll();
+});
 
 // ---------- Esc 关闭皮肤色板 ----------
 window.addEventListener('keydown', (e) => {

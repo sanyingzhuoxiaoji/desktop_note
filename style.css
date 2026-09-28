@@ -205,6 +205,36 @@ body.docked-hidden #app-header { -webkit-app-region: no-drag; }
   margin-top: 3px; user-select: text;
 }
 
+/* ===== 待办提醒 ===== */
+.reminder-badge {
+  font-size: 11px; color: var(--accent);
+  margin-top: 3px;
+}
+.reminder-badge.fired { color: var(--note-subtext); }
+
+.reminder-panel {
+  display: flex; gap: 6px; align-items: center;
+  margin-top: 5px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+}
+.reminder-panel[hidden] { display: none; }
+.reminder-panel input[type="datetime-local"] {
+  flex: 1; min-width: 0;
+  font: 12px/1.4 var(--font); color: var(--note-text);
+  background: transparent;
+  border: none; outline: none;
+}
+.reminder-panel button {
+  flex: 0 0 auto;
+  border: none; border-radius: 5px;
+  background: var(--accent); color: #fff;
+  font-size: 12px; padding: 3px 10px;
+  cursor: pointer;
+}
+.reminder-panel button:hover { filter: brightness(1.08); }
+
 .item-note-input {
   display: none;
   margin-top: 4px; width: 100%;
