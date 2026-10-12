@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, ipcMain, screen, Tray, Notification } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -13,6 +14,9 @@ const DEFAULT_BOUNDS = { width: 360, height: 460 };
 
 let win = null;
 let isQuitting = false; // 区分"隐藏到托盘"与"真正退出"
+let pinned = false;     // 用户置顶（📌）。贴边时窗口也会被强制置顶，故不能再用 isAlwaysOnTop 判断
+let userHidden = false; // 用户主动藏到托盘（✕/托盘隐藏）；桌面自愈不与它对抗
+let fullscreenActive = false; // 前台有全屏应用（看视频/F11/游戏）
 
 // ---------- 数据文件 ----------
 const dataPath = () => path.join(app.getPath('userData'), 'sticky-note-data.json');
@@ -105,6 +109,7 @@ function createWindow() {
     if (!isQuitting) {
       // 点 ✕ / Alt+F4：仅隐藏到托盘，不退出；退出只能走托盘菜单"退出应用"
       e.preventDefault();
+      userHidden = true; // ✕ = 藏到托盘，非退出
       win.hide();
     }
   });
@@ -194,12 +199,19 @@ ipcMain.handle('settings:set', (_e, patch) => {
 });
 ipcMain.on('win:set-always-on-top', (_e, flag) => {
   if (!win) return;
-  // 必须用 screen-saver 等级：默认 floating 等级会触发 Electron 的
-  // "置顶后把窗口插到任务栏后面"逻辑（MoveBehindTaskBarIfNeeded），
-  // 在任务栏被第三方软件干扰的系统上会把窗口挤出置顶层。
-  win.setAlwaysOnTop(!!flag, 'screen-saver');
-  win.moveTop(); // 取消置顶后回到普通层顶部，避免沉底
-  if (viewerWin && !viewerWin.isDestroyed()) viewerWin.setAlwaysOnTop(!!flag, 'screen-saver');
+  pinned = !!flag;
+  if (pinned && dock.side) {
+    // 📌 的语义是"不再自动收起"：置顶时解除贴边，滑出到展开位置（保持置顶）
+    const side = dock.side;
+    const b = win.getBounds();
+    const wa = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).workArea;
+    stopDockAnim();
+    dock = { side: null, hidden: false, width: 0 };
+    sendDockState();
+    slideDockTo(dockX(side, true, b.width, wa));
+  }
+  applyTopmost();
+  if (viewerWin && !viewerWin.isDestroyed()) viewerWin.setAlwaysOnTop(pinned, 'screen-saver');
 });
 
 // 右下角拖拽缩放：主进程用屏幕绝对坐标计算，避免窗口移动导致的反馈抖动
@@ -215,6 +227,92 @@ ipcMain.on('win:resize-move', () => {
   win.setBounds({ x: resizeCtx.bounds.x, y: resizeCtx.bounds.y, width, height });
 });
 ipcMain.on('win:resize-end', () => { resizeCtx = null; });
+
+// ---------- 层级裁决：置顶语义统一从这里走（screen-saver 等级，原因见下方置顶 IPC 注释） ----------
+function applyTopmost() {
+  if (!win || win.isDestroyed()) return;
+  const top = pinned || !!dock.side; // 贴边期间（含悬停展开态）强制置顶，边条才不会被盖住
+  win.setAlwaysOnTop(top, 'screen-saver');
+  if (!top) win.moveTop(); // 取消置顶后回到普通层顶部，避免沉底（Windows 怪癖）
+}
+
+// ---------- 桌面/全屏自愈：常驻 PowerShell 子进程轮询前台窗口 ----------
+// Electron 没有查询前台窗口的 API；反复 spawn PowerShell 太重，这里常驻一个
+// 600ms 一拍的进程流式输出前台窗口信息。
+const FS_SHELL_CLASSES = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd']); // 桌面/任务栏不算全屏应用
+let fsWatcher = null;
+
+function startFullscreenWatcher() {
+  const ps = `
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+public class FW {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+}
+"@
+while ($true) {
+  $h = [FW]::GetForegroundWindow()
+  if ($h -ne [IntPtr]::Zero) {
+    $r = New-Object RECT
+    [void][FW]::GetWindowRect($h, [ref]$r)
+    $ex = [FW]::GetWindowLong($h, -20)
+    $sb = New-Object System.Text.StringBuilder 256
+    [void][FW]::GetClassName($h, $sb, 256)
+    Write-Output "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom),$(($ex -band 8) -ne 0),$($sb.ToString())"
+  }
+  Start-Sleep -Milliseconds 600
+}`;
+  const b64 = Buffer.from(ps, 'utf16le').toString('base64');
+  fsWatcher = spawn('powershell.exe', ['-NoProfile', '-EncodedCommand', b64], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    windowsHide: true
+  });
+  fsWatcher.stdout.setEncoding('utf8');
+  let buf = '';
+  fsWatcher.stdout.on('data', (chunk) => {
+    buf += chunk;
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (line) handleForegroundLine(line);
+    }
+  });
+}
+
+function handleForegroundLine(line) {
+  if (!win || win.isDestroyed()) return;
+  const parts = line.split(',');
+  if (parts.length < 6) return;
+  const L = +parts[0], T = +parts[1], R = +parts[2], B = +parts[3];
+  const cls = parts.slice(5).join(',');
+  const b = win.getBounds();
+  const monitor = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).bounds;
+  // 前台窗口完整覆盖整块屏幕（非 workArea）→ 全屏应用；桌面/任务栏类名排除，
+  // 否则点一下桌面（Progman 全屏覆盖）会被误判成全屏
+  const fs = L <= monitor.x && T <= monitor.y
+    && R >= monitor.x + monitor.width && B >= monitor.y + monitor.height
+    && !FS_SHELL_CLASSES.has(cls);
+  if (fs !== fullscreenActive) fullscreenActive = fs;
+  applyOverlayRule();
+}
+
+function applyOverlayRule() {
+  if (!win || win.isDestroyed()) return;
+  if (fullscreenActive) {
+    if (win.isVisible()) win.hide(); // 全屏让位（含📌置顶的），退出全屏由下一拍自愈拉回
+    return;
+  }
+  if ((pinned || dock.side) && !userHidden && !win.isVisible()) {
+    win.showInactive(); // Win+D/全屏结束后自愈；不抢焦点
+  }
+}
 
 // ---------- 贴边自动隐藏（仅未置顶时；拖到屏幕左/右边缘收起为一条边，悬停滑出） ----------
 const STRIP_W = 8;  // 收起后露出的边条宽度
@@ -261,7 +359,7 @@ function handleMoveEnd() {
   const side = b.x <= wa.x + SNAP_PX ? 'left'
     : (b.x + b.width >= wa.x + wa.width - SNAP_PX ? 'right' : null);
 
-  if (win.isAlwaysOnTop()) { // 置顶状态下不贴边隐藏
+  if (pinned) { // 置顶状态不贴边隐藏
     if (dock.side) { dock = { side: null, hidden: false, width: 0 }; sendDockState(); }
     return;
   }
@@ -271,6 +369,7 @@ function handleMoveEnd() {
     if (dock.side === side) return;
     dock = { side, hidden: true, width: b.width };
     sendDockState();
+    applyTopmost(); // 贴边期间强制置顶，边条不被任何窗口盖住
     slideDockTo(dockX(side, false, b.width, wa));
   } else if (dock.side) {
     const restoreW = dock.width;
@@ -280,13 +379,14 @@ function handleMoveEnd() {
     if (restoreW && b.width !== restoreW) {
       win.setBounds({ x: b.x, y: b.y, width: restoreW, height: b.height });
     }
+    applyTopmost(); // 未置顶则退出强制置顶，回到普通层级
   }
 }
 
 let dockMoveTimer = null; // 拖动结束判定（在 createWindow 内注册监听，win 此时才存在）
 
 ipcMain.on('win:dock-hover', () => {
-  if (!win || win.isDestroyed() || !dock.side || !dock.hidden || win.isAlwaysOnTop()) return;
+  if (!win || win.isDestroyed() || !dock.side || !dock.hidden || pinned) return;
   const b = win.getBounds();
   const wa = screen.getDisplayNearestPoint({ x: b.x + (b.width >> 1), y: b.y + (b.height >> 1) }).workArea;
   dock.hidden = false;
@@ -294,7 +394,7 @@ ipcMain.on('win:dock-hover', () => {
   slideDockTo(dockX(dock.side, true, b.width, wa));
 });
 ipcMain.on('win:dock-leave', () => {
-  if (!win || win.isDestroyed() || !dock.side || dock.hidden || win.isAlwaysOnTop()) return;
+  if (!win || win.isDestroyed() || !dock.side || dock.hidden || pinned) return;
   const b = win.getBounds();
   // 指针仍在窗口内 = 拖拽区切换造成的"假离开"（drag 区域不产生鼠标事件，
   // 页面会误报 mouseleave），忽略之，否则会在展开/收起间无限横跳
@@ -349,7 +449,7 @@ ipcMain.on('img:view', (_e, payload) => {
   viewerWin.on('closed', () => { viewerWin = null; });
 
   // 便签置顶时查看器同步置顶（用 screen-saver 等级，原因同上）
-  if (win && win.isAlwaysOnTop()) viewerWin.setAlwaysOnTop(true, 'screen-saver');
+  if (win && pinned) viewerWin.setAlwaysOnTop(true, 'screen-saver');
 
   viewerWin.webContents.on('did-finish-load', () => {
     if (viewerWin && !viewerWin.isDestroyed()) viewerWin.webContents.send('viewer:img', { src });
@@ -372,8 +472,10 @@ function createTray() {
   tray.on('click', () => {
     if (!win || win.isDestroyed() || isQuitting) return;
     if (win.isVisible() && !win.isMinimized()) {
+      userHidden = true; // 主动藏到托盘，桌面/全屏自愈不与它对抗
       win.hide();
     } else {
+      userHidden = false;
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
@@ -403,6 +505,7 @@ function fireReminder(id) {
   });
   n.on('click', () => {
     if (win && !win.isDestroyed()) {
+      userHidden = false;
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
@@ -464,6 +567,7 @@ function openReminderPopup(payload) {
 ipcMain.on('alert:action', (_e, { action }) => {
   if (reminderWin && !reminderWin.isDestroyed()) reminderWin.close();
   if (action === 'open' && win && !win.isDestroyed()) {
+    userHidden = false;
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
@@ -504,6 +608,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => {
     if (!win || isQuitting) return;
+    userHidden = false;
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
@@ -514,8 +619,12 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     scheduleAllReminders(); // 启动扫描：未提醒的照常调度，已过期的立即补发
+    startFullscreenWatcher(); // 全屏检测 + Win+D 自愈轮询
   });
 }
 
-app.on('before-quit', () => { isQuitting = true; });
+app.on('before-quit', () => {
+  isQuitting = true;
+  if (fsWatcher) { fsWatcher.kill(); fsWatcher = null; } // 防僵尸 powershell 子进程
+});
 app.on('window-all-closed', () => app.quit());
