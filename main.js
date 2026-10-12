@@ -622,6 +622,9 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     scheduleAllReminders(); // 启动扫描：未提醒的照常调度，已过期的立即补发
     startFullscreenWatcher(); // 全屏检测 + Win+D 自愈轮询
+    // 启动时恢复的位置若贴着左右边缘 → 重新接上贴边状态并收成一条边
+    // （关闭时保存的是展开位置防丢，这里折回去；否则摊平在边缘且悬停/收起逻辑都不生效）
+    setTimeout(() => handleMoveEnd(), 100);
   });
 }
 
