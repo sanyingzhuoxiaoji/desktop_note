@@ -10,7 +10,9 @@ app.setAppUserModelId('com.sanyingzhuoxiaoji.desktop-note');
 
 const MIN_W = 280;
 const MIN_H = 220;
-const DEFAULT_BOUNDS = { width: 360, height: 460 };
+// 默认大小与停靠位（沿用用户习惯：屏幕右缘、垂直偏下）
+const DEFAULT_BOUNDS = { width: 372, height: 472 };
+const DEFAULT_DOCK_Y = 472; // 距屏幕顶部的默认 y
 
 let win = null;
 let isQuitting = false; // 区分"隐藏到托盘"与"真正退出"
@@ -50,8 +52,8 @@ function loadBounds() {
   const wa = screen.getPrimaryDisplay().workArea;
   if (!b) {
     return {
-      x: Math.round(wa.x + (wa.width - DEFAULT_BOUNDS.width) / 2),
-      y: Math.round(wa.y + (wa.height - DEFAULT_BOUNDS.height) / 3),
+      x: Math.round(wa.x + wa.width - DEFAULT_BOUNDS.width), // 右缘贴齐
+      y: Math.round(Math.min(wa.y + DEFAULT_DOCK_Y, wa.y + wa.height - DEFAULT_BOUNDS.height)),
       width: DEFAULT_BOUNDS.width,
       height: DEFAULT_BOUNDS.height
     };
