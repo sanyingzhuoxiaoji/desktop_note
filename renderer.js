@@ -728,6 +728,20 @@ api.onReminderFired(({ id }) => {
   renderAll();
 });
 
+// 启动补发早于本页加载完成时，reminder:fired 会被丢弃；
+// init 完成后向主进程要一次 reminded 状态对账
+api.onReminderSync((ids) => {
+  let changed = false;
+  for (const id of ids) {
+    const it = findItem(id);
+    if (it && !it.reminded) {
+      it.reminded = true;
+      changed = true;
+    }
+  }
+  if (changed) renderAll();
+});
+
 // ---------- Esc 关闭皮肤色板 ----------
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !skinPop.hidden) skinPop.hidden = true;
@@ -750,6 +764,7 @@ async function init() {
   applyBackground();
   applyCollapse();
   renderAll();
+  api.rendererReady(); // 告知主进程：数据已加载，可以对账 reminded 状态了
 }
 init();
 

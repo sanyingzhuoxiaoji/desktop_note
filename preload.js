@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('stickyApi', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setReminder: (id, remindAt) => ipcRenderer.invoke('reminder:set', { id, remindAt }),
   onReminderFired: (cb) => ipcRenderer.on('reminder:fired', (_e, p) => cb(p)),
+  rendererReady: () => ipcRenderer.send('renderer:ready'),
+  onReminderSync: (cb) => ipcRenderer.on('reminder:sync', (_e, ids) => cb(ids)),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   onSettingsChanged: (cb) => ipcRenderer.on('settings-changed', (_e, s) => cb(s))
 });

@@ -1,5 +1,5 @@
-const { app, BrowserWindow, Menu, ipcMain, screen, Tray, Notification } = require('electron');
-const { spawn } = require('child_process');
+const { app, BrowserWindow, Menu, ipcMain, screen, Tray, Notification, powerMonitor } = require('electron');
+const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -179,6 +179,22 @@ function actualAutoStart() {
   return app.getLoginItemSettings(loginItemOpts()).openAtLogin;
 }
 
+// 旧版用 Electron 默认条目名写的自启动项，与新版并存会让开机拉起两个实例
+// （单实例锁虽能兜底，但"关了自启动开机仍启动"的困惑必须清掉）
+const LEGACY_RUN_NAME = 'electron.app.桌面便签';
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+function removeLegacyAutoStartEntry() {
+  execFile('reg.exe', ['query', RUN_KEY, '/v', LEGACY_RUN_NAME], (err, stdout) => {
+    if (err || !stdout) return;
+    // 仅当旧条目也指向本应用自己的安装目录时才删，避免误伤同名异物的其他软件
+    const mine = path.dirname(process.execPath);
+    const appDir = app.isPackaged ? mine : app.getAppPath();
+    if (stdout.includes(mine) || stdout.includes(appDir)) {
+      execFile('reg.exe', ['delete', RUN_KEY, '/v', LEGACY_RUN_NAME, '/f'], () => {});
+    }
+  });
+}
+
 ipcMain.handle('settings:get', () => ({ ...appSettings, autoStart: actualAutoStart() }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
@@ -192,6 +208,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
         openAtLogin: patch.autoStart,
         ...loginItemOpts() // 开发模式下注册带应用路径，登录时能直接打开本应用
       });
+      removeLegacyAutoStartEntry(); // 开/关都清理旧版残留条目，避免"关了自启动开机仍启动"
     }
     saveAppSettings();
   }
@@ -486,10 +503,17 @@ function createTray() {
 }
 
 // ---------- 待办提醒（主进程调度：窗口隐藏到托盘时渲染端 timer 会被节流，主进程不受影响） ----------
+// 锁屏/息屏/睡眠期间到点的提醒不能直接消费：Windows 会吞掉锁屏时的 toast，
+// 而 reminded 标志一旦写入就永远不会再弹。改为 defer：留在调度表里，解锁/唤醒后补弹。
 const remindTimers = new Map(); // item.id → setTimeout 句柄
+const remindAtMap = new Map();  // item.id → remindAt(ISO)；锁屏 defer 的条目留在这里等 sweep
+let sessionLocked = false;
 
 function fireReminder(id) {
+  clearTimeout(remindTimers.get(id));
   remindTimers.delete(id);
+  if (sessionLocked) return; // 会话不可见：不弹、不写 reminded，条目留在 remindAtMap 等 sweep
+  remindAtMap.delete(id);
   if (!win || win.isDestroyed()) return;
   const data = readJSON(dataPath());
   const it = data && Array.isArray(data.items) ? data.items.find((x) => x.id === id) : null;
@@ -580,10 +604,19 @@ function scheduleReminder(id, remindAt) {
   const old = remindTimers.get(id);
   if (old) clearTimeout(old);
   remindTimers.delete(id);
-  if (!remindAt) return; // null = 清除提醒
+  if (!remindAt) { remindAtMap.delete(id); return; } // null = 清除提醒
+  remindAtMap.set(id, remindAt);
   const delay = new Date(remindAt).getTime() - Date.now();
   // 过期（含启动补发场景）走下一个 tick 立即触发
   remindTimers.set(id, setTimeout(() => fireReminder(id), Math.max(0, delay)));
+}
+
+// 兜底扫描：睡眠导致的定时器漂移/丢失、锁屏 defer 的条目，都由这里补上
+function sweepReminders() {
+  const now = Date.now();
+  for (const [id, remindAt] of [...remindAtMap]) {
+    if (new Date(remindAt).getTime() <= now) fireReminder(id);
+  }
 }
 
 ipcMain.handle('reminder:set', (_e, { id, remindAt }) => {
@@ -601,6 +634,17 @@ function scheduleAllReminders() {
     }
   }
 }
+
+// 渲染端 init 完成后同步 reminded 状态：启动即补发的场景下，
+// reminder:fired 推送可能早于渲染端 loadData 完成而被丢弃，其内存里的
+// false 会在下次防抖保存时覆盖主进程写入的 true（导致下次重启重复弹）
+ipcMain.on('renderer:ready', () => {
+  if (!win || win.isDestroyed()) return;
+  const data = readJSON(dataPath());
+  if (!data || !Array.isArray(data.items)) return;
+  const ids = data.items.filter((x) => x.status === 'todo' && x.reminded).map((x) => x.id);
+  if (ids.length) win.webContents.send('reminder:sync', ids);
+});
 
 // ---------- 生命周期 ----------
 // 单实例锁：托盘应用开两个会出现双托盘图标与数据写入竞态
@@ -622,6 +666,20 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     scheduleAllReminders(); // 启动扫描：未提醒的照常调度，已过期的立即补发
     startFullscreenWatcher(); // 全屏检测 + Win+D 自愈轮询
+    removeLegacyAutoStartEntry(); // 清理旧版残留的自启动条目（双条目会让开机拉起两个实例）
+
+    // 锁屏/睡眠感知：到点时会话不可见则 defer，解锁/唤醒后 sweep 补弹
+    // （直接弹会被 Windows 吞掉，而 reminded 标志已消费，导致用户永远看不到这条提醒）
+    powerMonitor.on('lock-screen', () => { sessionLocked = true; });
+    powerMonitor.on('unlock-screen', () => { sessionLocked = false; sweepReminders(); });
+    powerMonitor.on('suspend', () => { sessionLocked = true; });
+    powerMonitor.on('resume', () => {
+      sessionLocked = false;
+      scheduleAllReminders(); // 重建睡眠期间丢失/漂移的定时器
+      sweepReminders();
+    });
+    setInterval(sweepReminders, 30_000); // 兜底：定时器漂移、defer 条目，最迟 30 秒补上
+
     // 启动时恢复的位置若贴着左右边缘 → 重新接上贴边状态并收成一条边
     // （关闭时保存的是展开位置防丢，这里折回去；否则摊平在边缘且悬停/收起逻辑都不生效）
     setTimeout(() => handleMoveEnd(), 100);
